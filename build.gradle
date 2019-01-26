@@ -1,0 +1,213 @@
+buildscript {
+    ext {
+        kotlinVersion = '1.3.10'
+        springBootVersion = '2.1.2.RELEASE'
+    }
+    repositories {
+        mavenCentral()
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+    }
+    dependencies {
+        classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}")
+        classpath 'org.jooq:jooq-codegen:3.7.4'
+        classpath("org.jetbrains.kotlin:kotlin-allopen:${kotlinVersion}")
+        classpath("org.jetbrains.kotlin:kotlin-noarg:${kotlinVersion}")
+        classpath 'nu.studer:gradle-jooq-plugin:3.0.2'
+        classpath "net.ltgt.gradle:gradle-apt-plugin:0.19"
+    }
+}
+
+apply plugin: 'kotlin'
+apply plugin: 'kotlin-spring'
+apply plugin: 'kotlin-jpa'
+apply plugin: 'org.springframework.boot'
+apply plugin: 'io.spring.dependency-management'
+apply plugin: 'nu.studer.jooq'
+apply plugin: 'net.ltgt.apt'
+
+group = 'com.kasakaid.spring.batch'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '1.8'
+
+repositories {
+    mavenCentral()
+}
+
+test {
+    jvmArgs = ['-Dspring.profiles.active=test']
+}
+
+def jooqDir = "./target/generated-sources"
+def slf4jVersion = "1.7.7"
+def logbackVersion = "1.2.3"
+def sbCommonVersion = "1.0.5"
+def dbEntityVersion = "1.0"
+def syuLibVersion = "1.0"
+def arquillian_core = "1.1.4.Final"
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-batch'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-jooq'
+    implementation 'org.flywaydb:flyway-core'
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+    implementation "org.jetbrains.kotlin:kotlin-reflect"
+    runtimeOnly 'org.postgresql:postgresql'
+    implementation 'com.google.guava:guava:27.0.1-jre'
+
+    implementation 'org.postgresql:postgresql'
+    implementation "org.lazyluke:log4jdbc-remix:0.2.7"
+    implementation("org.bgee.log4jdbc-log4j2:log4jdbc-log4j2-jdbc4.1:1.16")
+    implementation('com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.9.0')
+    implementation group: 'com.fasterxml.jackson.datatype', name: 'jackson-datatype-jsr310', version: '2.9.3'
+    implementation('com.fasterxml.jackson.dataformat:jackson-dataformat-csv')
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.batch:spring-batch-test'
+    testImplementation 'org.jetbrains.kotlin:kotlin-test-junit5:1.2.50'
+    testImplementation('org.dbunit:dbunit:2.5.1')
+    testImplementation 'com.h2database:h2'
+    //# SERIAL が使えないので、H2 は諦めようかと思ったが、テスト時にスキーマを作っても create table で "kasakaid"."shop" は無効ですと出るので、h2を使う
+    /*
+     INFO  jdbc.sqlonly - create schema kasakaid
+      7047 [] [main] INFO  jdbc.sqltiming - create schema kasakaid
+      7048 [] [main] INFO  jdbc.audit - 2. Statement.execute(create schema kasakaid) returned false
+
+      と実行しているのに、
+
+    Caused by: java.sql.SQLException: invalid schema name: kasakaid in statement [CREATE TABLE "kasakaid"."shop"  (
+    shop_id SERIAL NOT NULL PRIMARY KEY,
+    shop_name CHARACTER VARYING(20),
+    environment CHARACTER VARYING(200)
+)]
+     */
+//    testImplementation 'org.hsqldb:hsqldb'
+}
+
+def defaultSchema = 'kazuteru'
+def dbUserName = defaultSchema
+def dbPassword = 'kazuteru'
+def dbDriver = 'org.postgresql.Driver'
+def developmentDBUrl = 'jdbc:postgresql://127.0.0.1:5432/kasakaidDB'
+
+def gradleGeneratedDir = "./build/generated-src/jooq/generatedSource"
+def gradleGeneratedOutput = file("${gradleGeneratedDir}")
+sourceSets {
+    main {
+        java {
+            srcDir gradleGeneratedDir
+        }
+    }
+}
+clean {
+    delete gradleGeneratedOutput
+}
+dependencies {
+    jooqRuntime 'org.postgresql:postgresql:9.4-1200-jdbc41'
+}
+jooq {
+    tables(sourceSets.main) {
+        jdbc {
+            driver = dbDriver
+            url = developmentDBUrl
+            user = dbUserName
+            password = dbPassword
+            properties {
+                property {
+                    key = 'ssl'
+                    value = 'false'
+                }
+            }
+        }
+        generator {
+            name = 'org.jooq.codegen.DefaultGenerator'
+            strategy {
+                name = 'org.jooq.codegen.DefaultGeneratorStrategy'
+            }
+            database {
+                name = 'org.jooq.meta.postgres.PostgresDatabase'
+                inputSchema = 'kasakaid'
+                forcedTypes {
+                    forcedType {
+                        name = 'varchar'
+                        expression = '.*'
+                        types = 'JSONB?'
+                    }
+                    forcedType {
+                        name = 'varchar'
+                        expression = '.*'
+                        types = 'INET'
+                    }
+                }
+            }
+            generate {
+                relations = true
+                deprecated = false
+                records = true
+                immutablePojos = true
+                fluentSetters = true // DTO としてつかうので setter つき
+            }
+            target {
+                packageName = 'nu.studer.sample'
+            }
+        }
+    }
+}
+
+/**
+ * DB のスキーマ情報を取得してディレクトリに配置します。
+ * テストクラス実行前に、kazuteru のスキーマを構築しますが、
+ * このダンプファイルを使用しています。
+ */
+task extractDBSchema(type: Exec) {
+    def targetDir = './build/resources'
+    def sqlFileName = "${targetDir}/kazuteru"
+    if (file(sqlFileName).exists()) {
+        ant.echo("kazuteru schema file exists. this task has skipped")
+        return
+    }
+
+    def shellScript = "./developDBDump.sh"
+    ant.echo "chmod for shell script ${shellScript}"
+    commandLine 'chmod', '755', shellScript
+    ant.echo "execute shell schript ${shellScript}"
+    commandLine "./developDBDump.sh"
+}
+
+def jooqOutDir = './out/production/classes/nu'
+compileJava.doFirst {
+    if (file(jooqOutDir).exists()) {
+        delete file("${jooqOutDir}/com")
+        ant.echo(message: "compileJava... we successully deleted files")
+    } else {
+        ant.echo(message: "compileJava... skipped deleted files")
+    }
+}
+
+task cleanUpJooq(type: Copy) {
+    from "${gradleGeneratedDir}/nu"
+    into "${jooqOutDir}"
+    doLast {
+        delete gradleGeneratedOutput
+    }
+}
+
+compileJava.finalizedBy(cleanUpJooq)
+extractDBSchema.dependsOn(generateTablesJooqSchemaSource)
+test.dependsOn(extractDBSchema)
+
+compileKotlin {
+    kotlinOptions {
+        freeCompilerArgs = ['-Xjsr305=strict']
+        jvmTarget = '1.8'
+    }
+}
+
+compileTestKotlin {
+    kotlinOptions {
+        freeCompilerArgs = ['-Xjsr305=strict']
+        jvmTarget = '1.8'
+    }
+}

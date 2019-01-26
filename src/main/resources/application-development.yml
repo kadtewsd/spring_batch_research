@@ -1,0 +1,10 @@
+spring:
+  datasource:
+      username: kazuteru
+      password: kazuteru
+      url: jdbc:log4jdbc:postgresql://127.0.0.1:5432/kasakaidDB
+      driver-class-name: net.sf.log4jdbc.DriverSpy
+  jpa:
+    properties:
+      hibernate:
+          default_schema: kazuteru

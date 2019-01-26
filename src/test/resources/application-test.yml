@@ -1,0 +1,24 @@
+spring:
+  datasource:
+    sql-script-encoding: UTF-8
+    username: sa
+    password:
+#    url: jdbc:log4jdbc:hsqldb:mem:testdb;sql.syntax_pgs=true; # SERIAL を有効化
+    url: jdbc:log4jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;
+    platform: h2
+    driver-class-name: net.sf.log4jdbc.DriverSpy
+#    schema: createSchema.sql
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+  batch:
+    schema: classpath:org/springframework/batch/core/schema-h2.sql
+    job:
+      enabled: true
+  main:
+    allow-bean-definition-overriding: true
+#  flyway: スキーマを作っても、create table "schema_name"."table_name" で無効なスキーマと言われた
+#    init-sqls: "create schema kasakaid;"
+
+logging:
+  level:
+    root: INFO

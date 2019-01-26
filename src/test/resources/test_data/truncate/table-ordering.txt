@@ -1,0 +1,3 @@
+ tb_trn_shop
+ tb_trn_people
+ tb_trn_customer

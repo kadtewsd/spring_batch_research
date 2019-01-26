@@ -1,0 +1,23 @@
+spring:
+#  schema を指定する意味がないので、これは指定しない。
+  flyway:
+    schema: public
+    # history table の スキーマを指定をしようとしたが、flyway の実装上、現在のスキーマ (デフォルトでは public) を取得する実装にしているので、history table のスキーマを変えるのは不可能
+    # table: kasakaid.schema_version
+  batch:
+    initialize-schema: never
+#    テーブルにプレフィックスをつけられるがこれはスキーマにはならず。"kasakaid.batch_" でクエリを投げる。spring batch はデフォルトのスキーマを使うので、どうしても public になる。
+#    table-prefix: kasakaid.
+  jpa:
+    properties:
+      hibernate:
+        temp:
+          use_jdbc_metadata_defaults: false
+        jdbc:
+          lob:
+            non_contextual_creation: true # caracter varying で CLOB がないエラー対策
+#application:
+#  db:
+#    schema:
+#        name: kasakaid
+
